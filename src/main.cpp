@@ -44,7 +44,7 @@
 #define CARD_RETRIES 20
 #define WAIT_PERIOD  50 //How often do we check for new cards when none visible
 #define GONE_PERIOD  50 //How often do we check if the card has gone
-#define ENABLE_LINE  PTE24
+#define ENABLE_LINE  PTC3
 
 DigitalOut LedRed   (LED_RED);
 DigitalOut LedGreen (LED_GREEN);
@@ -161,13 +161,14 @@ int main()
         printf("New card seen %s\n\r",idstr.c_str());
         if (validCard(idstr)) {
           startusage = time(NULL);
-          printf("Valid card!");
+          printf("Valid card!\n\r");
+          cardWasValid = true;
           LedRed = 1;
           LedBlue = 1;
           LedGreen = 0;
           EnableLine = 1;
         } else {
-          printf("NOT A Valid card!");
+          printf("NOT A Valid card!\n\r");
           LedRed = 0;
           LedBlue = 1;
           LedGreen = 1;
@@ -183,9 +184,12 @@ int main()
         printf("Card %s gone!", lastid.c_str());
         if (cardWasValid) {
           endusage = time(NULL);
+          unsigned int usage = difftime(endusage,startusage);
+          printf("I felt used for %u seconds",usage);
           //Log the usage
         }
         lastid = "This is not an id";
+        cardWasValid = false;
       }
       printf("Waiting...\n");
     }
