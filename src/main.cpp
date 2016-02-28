@@ -4,6 +4,7 @@
 #include "mbed.h"
 #include "EthernetInterface.h"
 #include "HTTPClient.h"
+#include "NTPClient.h"
 
 #if defined(TARGET_K64F)
 
@@ -58,6 +59,7 @@ MFRC522    RfChip   (SPI_MOSI, SPI_MISO, SPI_SCLK, SPI_CS, MF_RESET);
 char *idstrbyte = (char*) malloc(2 * sizeof(char));
 std::string machineuid = "27854af8-ebe3-5594-9ca0-8aea3f0a3f17";
 EthernetInterface eth;
+NTPClient ntp;
 
 
 bool waitForCard() {
@@ -119,6 +121,39 @@ bool validCard(std::string idstr) {
   //return (ret == 200);
 }
 
+bool logIt(time_t start, time_t end, std::string idstr) {
+  HTTPClient http;
+  char str[512];
+  sprintf(str,"http://usage.ranyard.info/log/bycard/%s",idstr.c_str());
+  HTTPMap map;
+  HTTPText inText(str, 512);
+  char ctimestr_start[80];
+  char ctimestr_end[80];
+  struct tm * timeinfo;
+  map.put("machineuid", machineuid.c_str());
+  printf("machineuid : %s\n\r",machineuid.c_str());
+  timeinfo = localtime (&start);
+  strftime(ctimestr_start,80,"%Y-%m-%d %H:%M:%S",timeinfo);
+  map.put("starttime", ctimestr_start);
+  printf("starttime : %s\n\r",ctimestr_start);
+  timeinfo = localtime (&end);
+  strftime(ctimestr_end,80,"%Y-%m-%d %H:%M:%S",timeinfo);
+  map.put("endtime", ctimestr_end);
+  printf("endtime : %s\n\r",ctimestr_end);
+    printf("\nTrying to post data...\n");
+    int ret = http.post(str, map, &inText);
+    if (!ret)
+    {
+      printf("Executed POST successfully - read %d characters\n", strlen(str));
+      printf("Result: %s\n", str);
+    }
+    else
+    {
+      printf("Error - ret = %d - HTTP return code = %d\n", ret, http.getHTTPResponseCode());
+    }
+
+}
+
 int main()
 {
   EnableLine = 0; // No fire on startup!
@@ -136,7 +171,25 @@ int main()
   std::string lastid = "This is not an id";
   bool cardWasValid = false;
   eth.init(); //Use DHCP
-  eth.connect();
+  printf("Connecting to ethernet...");
+  int connect_status = eth.connect();
+  while ( 0 != connect_status) {
+    connect_status = eth.connect();
+    printf(".");
+  }
+  printf("done\n\rEthernet connected as %s\r\n", eth.getIPAddress());
+  printf("Trying to update time...\r\n");
+    if (ntp.setTime("0.pool.ntp.org") == 0)
+    {
+      printf("Set time successfully\r\n");
+      time_t ctTime;
+      ctTime = time(NULL);
+      printf("Time is set to (UTC): %s\r\n", ctime(&ctTime));
+    }
+    else
+    {
+      printf("Error\r\n");
+    }
 
   /* Init. RC522 Chip */
   RfChip.PCD_Init();
@@ -181,17 +234,18 @@ int main()
       LedGreen = 1;
       EnableLine = 0;
       if (lastid != "This is not an id") {
-        printf("Card %s gone!", lastid.c_str());
+        printf("Card %s gone!\n\r", lastid.c_str());
         if (cardWasValid) {
           endusage = time(NULL);
           unsigned int usage = difftime(endusage,startusage);
-          printf("I felt used for %u seconds",usage);
+          printf("I felt used for %u seconds\n\r",usage);
           //Log the usage
+          logIt(startusage,endusage,lastid);
         }
         lastid = "This is not an id";
         cardWasValid = false;
       }
-      printf("Waiting...\n");
+      printf("Waiting...\n\r");
     }
     ReaderReset = 0;
     wait_ms(300);
