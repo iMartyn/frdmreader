@@ -1,6 +1,9 @@
 #include "mbed.h"
 #include "MFRC522.h"
 #include <string>
+#include "mbed.h"
+#include "EthernetInterface.h"
+#include "HTTPClient.h"
 
 #if defined(TARGET_K64F)
 
@@ -38,20 +41,23 @@
 
 #endif
 
-#define CARD_RETRIES 4
-#define WAIT_PERIOD  500 //How often do we check for new cards when none visible
+#define CARD_RETRIES 20
+#define WAIT_PERIOD  50 //How often do we check for new cards when none visible
 #define GONE_PERIOD  50 //How often do we check if the card has gone
-#define ENABLE_LINE  PTA0
+#define ENABLE_LINE  PTE24
 
 DigitalOut LedRed   (LED_RED);
 DigitalOut LedGreen (LED_GREEN);
 DigitalOut LedBlue  (LED_BLUE);
 DigitalOut ReaderReset (MF_RESET);
+DigitalOut EnableLine (ENABLE_LINE);
 
 Serial     DebugUART(UART_TX, UART_RX);
 MFRC522    RfChip   (SPI_MOSI, SPI_MISO, SPI_SCLK, SPI_CS, MF_RESET);
 
 char *idstrbyte = (char*) malloc(2 * sizeof(char));
+std::string machineuid = "27854af8-ebe3-5594-9ca0-8aea3f0a3f17";
+EthernetInterface eth;
 
 
 bool waitForCard() {
@@ -61,26 +67,20 @@ bool waitForCard() {
     if (failedreads > CARD_RETRIES) {
       return false;
     }
-    LedBlue  = 1;
-    LedRed   = 0;
-    LedGreen = 0;
     // Look for new cards
     if ( ! RfChip.PICC_IsNewCardPresent())
     {
-    //   wait_ms(WAIT_PERIOD);
+       wait_ms(WAIT_PERIOD);
        failedreads++;
        continue;
     }
     if ( ! RfChip.PICC_ReadCardSerial())
     {
-      //wait_ms(WAIT_PERIOD);
+      wait_ms(WAIT_PERIOD);
       failedreads++;
       continue;
     }
     RfChip.PICC_HaltA();
-    LedBlue  = 0;
-    LedRed   = 1;
-    LedGreen = 1;
     return true;
   }
 }
@@ -99,13 +99,34 @@ std::string readUID(MFRC522 RfChip) {
 }
 
 bool validCard(std::string idstr) {
-  return true;
+  HTTPClient http;
+  char str[512];
+  sprintf(str,"http://usage.ranyard.info/canuse/TestMachine/%s",idstr.c_str());
+  std::string url = str;
+  int ret = http.get(url.c_str(), str, 128);
+  //  int ret = http.get("https://developer.mbed.org/media/uploads/donatien/hello.txt", str, 128);
+  if (!ret)
+    {
+      printf("Return\n\r%s",str);
+      return (strncmp(str,"true",4) == 0);
+    }
+    else
+    {
+      printf("Error - ret = %d - HTTP return code = %d\n", ret, http.getHTTPResponseCode());
+      return false;
+    }
+  //printf("URL was %s\n\rReturn was %i\n\rContent was %s",url.c_str(),ret,str);
+  //return (ret == 200);
 }
 
 int main()
 {
+  EnableLine = 0; // No fire on startup!
+  LedBlue  = 1;
+  LedRed   = 1;
+  LedGreen = 1;
   /* Set debug UART speed */
-  set_time(1256729737);  // Set RTC time to Wed, 28 Oct 2009 11:35:37
+  //set_time(1256729737);  // Set RTC time to Wed, 28 Oct 2009 11:35:37
   time_t startusage = time(NULL);
   time_t endusage = time(NULL);
   DebugUART.baud(115200);
@@ -114,7 +135,8 @@ int main()
   std::string idstr;
   std::string lastid = "This is not an id";
   bool cardWasValid = false;
-  std::string machineuid = "27854af8-ebe3-5594-9ca0-8aea3f0a3f17";
+  eth.init(); //Use DHCP
+  eth.connect();
 
   /* Init. RC522 Chip */
   RfChip.PCD_Init();
@@ -123,6 +145,10 @@ int main()
   uint8_t temp = RfChip.PCD_ReadRegister(MFRC522::VersionReg);
   DebugUART.printf("MFRC522 version: %d\n\r", temp & 0x07);
   DebugUART.printf("\n\r");
+    //Blue when waiting...
+    LedBlue  = 0;
+    LedRed   = 1;
+    LedGreen = 1;
 
   while(1)
   {
@@ -133,9 +159,26 @@ int main()
         //Actual new card check!
         lastid = idstr;
         printf("New card seen %s\n\r",idstr.c_str());
-        startusage = time(NULL);
+        if (validCard(idstr)) {
+          startusage = time(NULL);
+          printf("Valid card!");
+          LedRed = 1;
+          LedBlue = 1;
+          LedGreen = 0;
+          EnableLine = 1;
+        } else {
+          printf("NOT A Valid card!");
+          LedRed = 0;
+          LedBlue = 1;
+          LedGreen = 1;
+        }
       }
     } else {
+      //Blue when waiting...
+      LedBlue  = 0;
+      LedRed   = 1;
+      LedGreen = 1;
+      EnableLine = 0;
       if (lastid != "This is not an id") {
         printf("Card %s gone!", lastid.c_str());
         if (cardWasValid) {
@@ -147,10 +190,10 @@ int main()
       printf("Waiting...\n");
     }
     ReaderReset = 0;
-    wait_ms(100);
+    wait_ms(300);
     ReaderReset = 1;
     RfChip.PCD_Init();
-    wait_ms(100);
+    wait_ms(300);
 
 
   }
