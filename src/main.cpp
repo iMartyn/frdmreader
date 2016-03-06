@@ -36,16 +36,16 @@
 #define UART_RX     P0_18
 #define UART_TX     P0_19
 
-/* LED Pins */
-#define LED_RED     P0_7
-#define LED_GREEN   P1_22
-
 #endif
+/* LED Pins */
+ # define LED_RED     PTC10
+ # define LED_GREEN   PTC11
+ # define LED_BLUE    PTB11
 
 #define CARD_RETRIES 20
 #define WAIT_PERIOD  50 //How often do we check for new cards when none visible
 #define GONE_PERIOD  50 //How often do we check if the card has gone
-#define ENABLE_LINE  PTC3
+#define ENABLE_LINE  PTB2
 
 DigitalOut LedRed   (LED_RED);
 DigitalOut LedGreen (LED_GREEN);
