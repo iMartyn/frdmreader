@@ -57,7 +57,7 @@ Serial     DebugUART(UART_TX, UART_RX);
 MFRC522    RfChip   (SPI_MOSI, SPI_MISO, SPI_SCLK, SPI_CS, MF_RESET);
 
 char *idstrbyte = (char*) malloc(2 * sizeof(char));
-std::string machineuid = "27854af8-ebe3-5594-9ca0-8aea3f0a3f17";
+std::string machineuid = "6f442224-1b26-573d-9243-5ab3b9da8ee4";
 EthernetInterface eth;
 NTPClient ntp;
 
@@ -103,14 +103,45 @@ std::string readUID(MFRC522 RfChip) {
 bool validCard(std::string idstr) {
   HTTPClient http;
   char str[512];
-  sprintf(str,"http://usage.ranyard.info/canuse/TestMachine/%s",idstr.c_str());
+  char post[512];
+  sprintf(str,"http://usage.ranyard.info/canuse/Laser/%s",idstr.c_str());
   std::string url = str;
   int ret = http.get(url.c_str(), str, 128);
   //  int ret = http.get("https://developer.mbed.org/media/uploads/donatien/hello.txt", str, 128);
   if (!ret)
     {
-      printf("Return\n\r%s",str);
-      return (strncmp(str,"true",4) == 0);
+      printf("Return\n\r%s\n\r",str);
+      if (strncmp(str,"true",4) == 0) {
+        return true;
+      } else if (strncmp(str,"{\"special",7) == 0) {
+        //Special Card
+        LedRed = 1;
+        LedBlue = 0;
+        LedGreen = 1;
+        printf("Waiting for another card...\n");
+        waitForCard();
+        printf("Found another card.\n");
+        HTTPMap map;
+        HTTPText inText(post, 512);
+        char ctimestr_start[80];
+        char ctimestr_end[80];
+        struct tm * timeinfo;
+        map.put("yougave", str);
+        printf("machineuid : %s\n\r",machineuid.c_str());
+        http.post("http://usage.ranyard.info/specialcard/Laser/", map, NULL);
+        if (!ret)
+        {    
+          printf("Executed POST successfully - read %d characters\n", strlen(str));
+          printf("Result: %s\n", str);
+        }
+        else
+        {
+          printf("Error - ret = %d - HTTP return code = %d\n", ret, http.getHTTPResponseCode());
+        }
+        return false;
+      } else {
+        return false;
+      }
     }
     else
     {
