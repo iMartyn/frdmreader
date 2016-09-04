@@ -6,6 +6,11 @@
 #include "HTTPClient.h"
 #include "NTPClient.h"
 
+/* Create a machine on the API first, it'll give you a UID */
+
+std::string machineuid = "27854af8-ebe3-5594-9ca0-8aea3f0a3f17";
+std::string machineName = "TestMachine";
+
 #if defined(TARGET_K64F)
 
 /* K64F Pins for MFRC522 SPI interface */
@@ -57,9 +62,11 @@ Serial     DebugUART(UART_TX, UART_RX);
 MFRC522    RfChip   (SPI_MOSI, SPI_MISO, SPI_SCLK, SPI_CS, MF_RESET);
 
 char *idstrbyte = (char*) malloc(2 * sizeof(char));
-std::string machineuid = "27854af8-ebe3-5594-9ca0-8aea3f0a3f17";
+
+std::string baseurl = "http://usage.ranyard.info/";
 EthernetInterface eth;
 NTPClient ntp;
+bool NTPSuccessful = false;
 
 
 bool waitForCard() {
@@ -102,10 +109,15 @@ std::string readUID(MFRC522 RfChip) {
 
 bool validCard(std::string idstr) {
   HTTPClient http;
-  char str[512];
-  sprintf(str,"http://usage.ranyard.info/canuse/TestMachine/%s",idstr.c_str());
-  std::string url = str;
-  int ret = http.get(url.c_str(), str, 128);
+  std::string thisURL = baseurl; // ends in /
+  thisURL.append("canuse/");
+  thisURL.append(machineName);
+  thisURL.append("/");
+  thisURL.append(idstr);
+  // thisURL should now look something like
+  // http://usage.ranyard.info/canuse/TestMachine/FE12AB34
+  char str[512]; // buffer for whatever is returned by the API
+  int ret = http.get(thisURL.c_str(), str, 128);
   //  int ret = http.get("https://developer.mbed.org/media/uploads/donatien/hello.txt", str, 128);
   if (!ret)
     {
@@ -114,7 +126,7 @@ bool validCard(std::string idstr) {
     }
     else
     {
-      printf("Error - ret = %d - HTTP return code = %d\n", ret, http.getHTTPResponseCode());
+      printf("Error - ret = %d - HTTP return code = %d\nURL was %s", ret, http.getHTTPResponseCode(), thisURL.c_str());
       return false;
     }
   //printf("URL was %s\n\rReturn was %i\n\rContent was %s",url.c_str(),ret,str);
@@ -124,7 +136,10 @@ bool validCard(std::string idstr) {
 bool logIt(time_t start, time_t end, std::string idstr) {
   HTTPClient http;
   char str[512];
-  sprintf(str,"http://usage.ranyard.info/log/bycard/%s",idstr.c_str());
+  std::string thisURL = baseurl; // ends in /
+  thisURL.append("log/bycard/");
+  thisURL.append(idstr);
+  strcpy(str, thisURL.c_str());
   HTTPMap map;
   HTTPText inText(str, 512);
   char ctimestr_start[80];
@@ -154,6 +169,26 @@ bool logIt(time_t start, time_t end, std::string idstr) {
 
 }
 
+bool setNTP()
+{
+  printf("Trying to update time...\r\n");
+  if (ntp.setTime("0.pool.ntp.org") == 0)
+  {
+    printf("Set time successfully\r\n");
+    time_t ctTime;
+    ctTime = time(NULL);
+    printf("Time is set to (UTC): %s\r\n", ctime(&ctTime));
+    NTPSuccessful = true;
+    return true;
+  }
+  else
+  {
+    printf("Error\r\n");
+    return false;
+  }
+
+}
+
 int main()
 {
   EnableLine = 0; // No fire on startup!
@@ -178,18 +213,7 @@ int main()
     printf(".");
   }
   printf("done\n\rEthernet connected as %s\r\n", eth.getIPAddress());
-  printf("Trying to update time...\r\n");
-    if (ntp.setTime("0.pool.ntp.org") == 0)
-    {
-      printf("Set time successfully\r\n");
-      time_t ctTime;
-      ctTime = time(NULL);
-      printf("Time is set to (UTC): %s\r\n", ctime(&ctTime));
-    }
-    else
-    {
-      printf("Error\r\n");
-    }
+  setNTP();
 
   /* Init. RC522 Chip */
   RfChip.PCD_Init();
