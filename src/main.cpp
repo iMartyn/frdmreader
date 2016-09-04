@@ -229,6 +229,10 @@ int main()
 
   while(1)
   {
+    if (!NTPSuccessful) {
+      setNTP();
+      wait_ms(300);  //let's not hammer the ntp servers if there's an issue
+    }
     if (waitForCard()) {
       // Dump debug info about the card. PICC_HaltA() is automatically called. // UID
       idstr = readUID(RfChip);
